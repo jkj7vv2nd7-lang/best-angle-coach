@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>今のベストアングル ― 空間コーチカメラ（試作版）</title>
+<meta name="description" content="構図と水平をリアルタイムでコーチする撮影支援アプリの試作版。3つの構図ガイド、水準器、音声ガイド、AIコーチング（デモモード付き）。">
+<meta property="og:title" content="今のベストアングル ― 空間コーチカメラ">
+<meta property="og:description" content="構図と水平をリアルタイムでコーチする撮影支援アプリ（試作版）。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="og-image.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+  *{margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    font-family:"Hiragino Maru Gothic ProN","Hiragino Sans","Noto Sans JP",sans-serif;
+    background:#101216; color:#f2f3f5; height:100dvh; overflow:hidden;
+    display:grid; grid-template-rows:auto 1fr auto auto;
+    padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom);
+  }
+  button{font-family:inherit; cursor:pointer; border:none; background:none; color:inherit;}
+  /* ヘッダー */
+  header{display:flex; align-items:center; gap:8px; padding:8px 10px; background:#171a20;}
+  header .logo{font-size:17px; font-weight:900; letter-spacing:.02em; white-space:nowrap;}
+  header .logo span{color:#ffb03a;}
+  header .sp{flex:1;}
+  .hbtn{border:1.5px solid #3a3f4a; background:#22262f; color:#e8eaee; border-radius:999px;
+    padding:8px 12px; font-size:13px; font-weight:700; white-space:nowrap;}
+  .hbtn.on{border-color:#ffb03a; color:#ffb03a;}
+  /* ファインダー */
+  #finder{position:relative; overflow:hidden; background:#000; min-height:0;}
+  #cam{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:none;}
+  #dummyWrap{position:absolute; inset:0; display:none;}
+  #dummyWrap svg{width:100%; height:100%; display:block;}
+  #dummyWrap .pan{animation:kenburns 16s ease-in-out infinite alternate;}
+  @keyframes kenburns{from{transform:scale(1.02) translate(0,0);} to{transform:scale(1.12) translate(-10px,-14px);}}
+  .cloud{animation:drift 26s linear infinite alternate;}
+  @keyframes drift{from{transform:translateX(-8px);} to{transform:translateX(14px);}}
+  #guideSvg{position:absolute; inset:0; width:100%; height:100%; pointer-events:none;}
+  /* 水準器 */
+  #level{position:absolute; left:50%; top:40%; transform:translate(-50%,-50%); width:230px; pointer-events:none; text-align:center;}
+  #levelBar{position:relative; height:26px; border:2px solid rgba(255,255,255,.85); border-radius:999px;
+    background:rgba(10,12,16,.38); box-shadow:0 1px 6px rgba(0,0,0,.45); overflow:hidden; transition:box-shadow .2s, border-color .2s;}
+  #levelBar .mid{position:absolute; left:50%; top:0; bottom:0; width:2px; margin-left:-1px; background:rgba(255,255,255,.8);}
+  #bubble{position:absolute; top:50%; left:50%; width:18px; height:18px; margin:-9px 0 0 -9px; border-radius:50%;
+    background:#ffb03a; box-shadow:0 0 0 2px rgba(0,0,0,.25); transition:background .2s;}
+  #level.ok #levelBar{border-color:#39d98a; box-shadow:0 0 14px rgba(57,217,138,.85);}
+  #level.ok #bubble{background:#39d98a;}
+  #levelText{margin-top:6px; font-size:14px; font-weight:900; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.8);}
+  #level.ok #levelText{color:#39d98a;}
+  /* ファインダー上のボタン・表示 */
+  #sensorBtn{position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
+    background:#ffb03a; color:#231600; font-weight:900; font-size:15px; padding:12px 20px; border-radius:999px;
+    box-shadow:0 4px 14px rgba(0,0,0,.5); display:none; white-space:nowrap;}
+  #modeTag{position:absolute; left:10px; top:10px; background:rgba(10,12,16,.55); color:#ffd9a0;
+    font-size:13px; font-weight:700; padding:6px 10px; border-radius:8px;}
+  #tiltCtl{position:absolute; left:10px; right:10px; bottom:12px; white-space:nowrap; background:rgba(10,12,16,.62);
+    border-radius:12px; padding:8px 12px; display:none; align-items:center; gap:10px; font-size:13px;}
+  #tiltCtl input{flex:1; accent-color:#ffb03a; height:28px;}
+  /* コーチパネル */
+  #coach{display:flex; gap:10px; align-items:center; background:#171a20; padding:10px 12px; border-top:1px solid #262a33;}
+  #scoreBox{flex:none; text-align:center; width:74px;}
+  #scoreNum{font-size:34px; font-weight:900; line-height:1; color:#ffb03a;}
+  #scoreBox .unit{font-size:11px; color:#9aa1ad;}
+  #adviceBox{flex:1; min-width:0;}
+  #adviceText{font-size:16px; font-weight:700; line-height:1.45;}
+  #adviceSub{font-size:12px; color:#9aa1ad; margin-top:2px;}
+  #stopSpeak{flex:none; border:1.5px solid #3a3f4a; border-radius:10px; padding:9px 10px; font-size:12px; font-weight:700; color:#e8eaee; background:#22262f;}
+  /* 操作部 */
+  #controls{background:#171a20; padding:8px 10px 12px; border-top:1px solid #262a33;}
+  #modeRow{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:10px;}
+  .modeBtn{border:2px solid #3a3f4a; background:#22262f; color:#cfd4dc; border-radius:12px; padding:10px 4px;
+    font-size:14px; font-weight:800; line-height:1.3;}
+  .modeBtn small{display:block; font-size:11px; font-weight:600; color:#9aa1ad;}
+  .modeBtn.on{border-color:#ffb03a; color:#ffb03a; background:#2a2118;}
+  .modeBtn.on small{color:#d8b98a;}
+  #actRow{display:flex; align-items:center; justify-content:space-between; gap:8px;}
+  .sideBtn{border:1.5px solid #3a3f4a; background:#22262f; color:#e8eaee; border-radius:12px;
+    padding:12px 10px; font-size:13px; font-weight:800; width:96px; line-height:1.35;}
+  .sideBtn small{display:block; font-size:11px; color:#9aa1ad; font-weight:600;}
+  #shutter{flex:none; width:74px; height:74px; border-radius:50%; border:5px solid #f2f3f5;
+    background:#ffb03a; box-shadow:0 0 0 3px #3a3f4a, 0 4px 12px rgba(0,0,0,.5);}
+  #shutter:active{transform:scale(.94);}
+  /* モーダル共通 */
+  .modal{position:fixed; inset:0; background:rgba(5,6,8,.78); display:none; align-items:center; justify-content:center; z-index:40; padding:16px;}
+  .modal.open{display:flex;}
+  .card{background:#1d2027; border-radius:18px; padding:20px; width:100%; max-width:430px; max-height:92dvh; overflow:auto;}
+  .card h2{font-size:18px; margin-bottom:12px;}
+  .card p{font-size:14px; line-height:1.7; color:#cfd4dc; margin-bottom:10px;}
+  .card label{font-size:13px; font-weight:700; display:block; margin:12px 0 6px;}
+  .card input[type="password"], .card input[type="text"]{width:100%; padding:12px; border-radius:10px; border:1.5px solid #3a3f4a;
+    background:#12141a; color:#fff; font-size:15px;}
+  .card .row{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;}
+  .btn{flex:1; padding:13px 10px; border-radius:12px; font-size:15px; font-weight:800; text-align:center; min-width:110px;}
+  .btn.primary{background:#ffb03a; color:#231600;}
+  .btn.ghost{background:#262a33; color:#e8eaee; border:1.5px solid #3a3f4a;}
+  .checkline{display:flex; align-items:center; gap:8px; font-size:14px; margin-top:12px;}
+  .checkline input{width:20px; height:20px; accent-color:#ffb03a;}
+  #previewImg{width:100%; border-radius:12px; display:block; background:#000;}
+  #previewMeta{font-size:14px; line-height:1.7; margin-top:10px; color:#ffd9a0; font-weight:700;}
+  .note{font-size:12px; color:#9aa1ad; line-height:1.6;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">今の<span>ベストアングル</span></div>
+  <div class="sp"></div>
+  <button class="hbtn on" id="voiceBtn">🔊 音声 ON</button>
+  <button class="hbtn" id="settingsBtn">⚙ 設定</button>
+</header>
+
+<div id="finder">
+  <video id="cam" autoplay playsinline muted></video>
+  <div id="dummyWrap" aria-label="ダミー風景">
+    <svg viewBox="0 0 400 600" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#7ec3e8"/><stop offset=".55" stop-color="#cfeaf7"/><stop offset="1" stop-color="#fdf3d8"/>
+        </linearGradient>
+        <linearGradient id="field" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#8fce62"/><stop offset="1" stop-color="#5da244"/>
+        </linearGradient>
+      </defs>
+      <g class="pan">
+        <rect width="400" height="600" fill="url(#sky)"/>
+        <circle cx="322" cy="92" r="30" fill="#ffd94d"/>
+        <g class="cloud" fill="#ffffff" opacity=".92">
+          <ellipse cx="86" cy="84" rx="42" ry="15"/><ellipse cx="118" cy="74" rx="30" ry="12"/>
+          <ellipse cx="252" cy="140" rx="36" ry="12"/><ellipse cx="278" cy="132" rx="24" ry="10"/>
+        </g>
+        <polygon points="0,330 110,190 220,330" fill="#8fa8bf"/>
+        <polygon points="130,330 268,168 400,330" fill="#7590ab"/>
+        <polygon points="268,168 240,205 268,196 296,208" fill="#ffffff"/>
+        <rect y="330" width="400" height="52" fill="#a8c69f"/>
+        <g><!-- 建物 -->
+          <rect x="292" y="238" width="66" height="96" fill="#b0563a"/>
+          <polygon points="284,240 325,206 366,240" fill="#7c3a26"/>
+          <rect x="308" y="262" width="16" height="20" fill="#ffe9a8"/>
+          <rect x="330" y="292" width="14" height="42" fill="#5d2d1d"/>
+        </g>
+        <g><!-- 木 -->
+          <rect x="52" y="292" width="10" height="52" fill="#7a5230"/>
+          <circle cx="57" cy="272" r="34" fill="#4e9b47"/><circle cx="34" cy="290" r="22" fill="#5cab54"/><circle cx="80" cy="290" r="22" fill="#5cab54"/>
+        </g>
+        <rect y="382" width="400" height="218" fill="url(#field)"/>
+        <g id="flowers"></g>
+        <ellipse cx="200" cy="470" rx="46" ry="58" fill="#e86a92"/>
+        <ellipse cx="200" cy="470" rx="30" ry="40" fill="#f28bb0"/>
+        <circle cx="200" cy="462" r="13" fill="#ffd94d"/>
+      </g>
+    </svg>
+  </div>
+  <svg id="guideSvg" viewBox="0 0 400 600" preserveAspectRatio="xMidYMid slice"></svg>
+  <div id="modeTag">🌸 花・植物モード</div>
+  <div id="level">
+    <div id="levelBar"><div class="mid"></div><div id="bubble"></div></div>
+    <div id="levelText">水準器</div>
+  </div>
+  <button id="sensorBtn">📐 センサーを有効化（水平チェック）</button>
+  <div id="tiltCtl"><span>傾きテスト</span><input type="range" id="tiltRange" min="-30" max="30" step="0.5" value="8"><span id="tiltVal">8°</span></div>
+</div>
+
+<div id="coach">
+  <div id="scoreBox"><div id="scoreNum">―</div><div class="unit">スコア /100</div></div>
+  <div id="adviceBox">
+    <div id="adviceText">「コーチに聞く」で、今の構図を判定します。</div>
+    <div id="adviceSub">デモモード（APIキー未設定）</div>
+  </div>
+  <button id="stopSpeak">⏹ 音声<br>停止</button>
+</div>
+
+<div id="controls">
+  <div id="modeRow">
+    <button class="modeBtn on" data-mode="flower">🌸 花・植物<small>日の丸＋黄金比</small></button>
+    <button class="modeBtn" data-mode="portrait">🧑 人物<small>三分割＋シルエット</small></button>
+    <button class="modeBtn" data-mode="landscape">🏔 風景・建物<small>水平線＋一点透視</small></button>
+  </div>
+  <div id="actRow">
+    <button class="sideBtn" id="srcBtn">🎞 ダミー風景<small>カメラに切替</small></button>
+    <button id="shutter" aria-label="シャッター"></button>
+    <button class="sideBtn" id="coachBtn">🤖 コーチに聞く<small>構図を判定</small></button>
+  </div>
+</div>
+
+<!-- 設定モーダル -->
+<div class="modal" id="settingsModal">
+  <div class="card">
+    <h2>⚙ 設定</h2>
+    <p>Gemini APIキーを入れると、AIが実際の写真を見て採点とアドバイスをします。キーはこの端末の中だけに保存され、外部に送られるのは判定時の写真だけです。未設定のままでも「デモモード」で全機能を試せます。</p>
+    <label for="apiKey">Gemini APIキー</label>
+    <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off">
+    <div class="row">
+      <button class="btn primary" id="saveKey">保存する</button>
+      <button class="btn ghost" id="clearKey">キーを消す</button>
+    </div>
+    <label class="checkline"><input type="checkbox" id="showTilt"> 傾きテスト用スライダーを表示する</label>
+    <p class="note">※ センサー（ジャイロ）が使える機種では、スライダーより実際の傾きが優先されます。センサーが無い環境の動作確認用です。</p>
+    <div class="row"><button class="btn ghost" id="closeSettings">閉じる</button></div>
+  </div>
+</div>
+
+<!-- プレビューモーダル -->
+<div class="modal" id="previewModal">
+  <div class="card">
+    <h2>📸 撮影できました</h2>
+    <img id="previewImg" alt="撮影した写真">
+    <div id="previewMeta"></div>
+    <div class="row">
+      <button class="btn primary" id="shareBtn">共有する</button>
+      <a class="btn ghost" id="downloadBtn" download="best-angle.jpg">保存する</a>
+    </div>
+    <div class="row"><button class="btn ghost" id="closePreview">閉じる</button></div>
+    <p class="note">※ iPhoneでは「共有する」→「画像を保存」が確実です。</p>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const store = {
+  get key(){ return localStorage.getItem("bac-key") || ""; },
+  set key(v){ v ? localStorage.setItem("bac-key", v) : localStorage.removeItem("bac-key"); },
+  get voice(){ return localStorage.getItem("bac-voice") !== "off"; },
+  set voice(v){ localStorage.setItem("bac-voice", v ? "on" : "off"); }
+};
+
+/* ---------- 状態 ---------- */
+let mode = "flower";
+let usingDummy = false;
+let stream = null;
+let gamma = null;          // センサーの傾き（取れなければ null）
+let sliderGamma = 8;       // テスト用スライダーの傾き
+let lastScore = null, lastAdvice = "";
+let wasLevelOK = false, lastLevelSpeakAt = 0;
+let analyzing = false;
+
+/* ---------- ダミー風景の花を散らす ---------- */
+(() => {
+  const g = $("flowers");
+  const cols = ["#ff8fab", "#ffd94d", "#ffffff", "#ff6b6b", "#c39bff"];
+  let s = "";
+  let seed = 42;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < 90; i++) {
+    const x = 8 + rnd() * 384, y = 400 + rnd() * 188, r = 2.4 + rnd() * 3.4;
+    s += `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${r.toFixed(1)}" fill="${cols[i % cols.length]}" opacity=".9"/>`;
+  }
+  g.innerHTML = s;
+})();
+
+/* ---------- 構図ガイド（SVG） ---------- */
+function spiralPoints(cx, cy, a, turns, rot) {
+  // 対数らせん（黄金比で拡大）を点列で作る
+  const pts = [];
+  const b = Math.log(1.618) / (Math.PI / 2);
+  for (let i = 0; i <= 90; i++) {
+    const t = (turns * Math.PI * 2) * i / 90;
+    const r = a * Math.exp(b * t);
+    const x = cx + r * Math.cos(t + rot), y = cy + r * Math.sin(t + rot);
+    pts.push(x.toFixed(1) + "," + y.toFixed(1));
+  }
+  return pts.join(" ");
+}
+function drawGuide() {
+  const S = [];
+  const stroke = 'stroke="#ffb03a" stroke-width="3" fill="none" stroke-linecap="round"';
+  const thin = 'stroke="rgba(255,255,255,.75)" stroke-width="1.6" fill="none"';
+  if (mode === "flower") {
+    // 日の丸（中心の的）
+    S.push(`<circle cx="200" cy="300" r="46" ${stroke}/>`);
+    S.push(`<circle cx="200" cy="300" r="7" fill="#ffb03a"/>`);
+    S.push(`<circle cx="200" cy="300" r="86" stroke="rgba(255,176,58,.45)" stroke-width="2" fill="none" stroke-dasharray="6 8"/>`);
+    // 黄金比らせん
+    S.push(`<polyline points="${spiralPoints(196, 306, 2.2, 1.55, 2.2)}" stroke="#ff7847" stroke-width="3.4" fill="none" stroke-linecap="round" opacity=".95"/>`);
+    S.push(`<text x="200" y="548" text-anchor="middle" font-size="17" fill="#fff" font-weight="700" style="text-shadow:0 1px 3px #000">花を的か、らせんの中心へ</text>`);
+  } else if (mode === "portrait") {
+    // 三分割法
+    [133, 267].forEach(x => S.push(`<line x1="${x}" y1="0" x2="${x}" y2="600" ${thin}/>`));
+    [200, 400].forEach(y => S.push(`<line x1="0" y1="${y}" x2="400" y2="${y}" ${thin}/>`));
+    [133, 267].forEach(x => [200, 400].forEach(y => S.push(`<circle cx="${x}" cy="${y}" r="6" fill="#ffb03a"/>`)));
+    // 人物シルエット枠
+    S.push(`<g ${stroke} stroke-dasharray="10 8">
+      <ellipse cx="200" cy="212" rx="52" ry="66"/>
+      <path d="M96,470 C96,368 150,330 200,330 C250,330 304,368 304,470"/>
+    </g>`);
+    S.push(`<text x="200" y="548" text-anchor="middle" font-size="17" fill="#fff" font-weight="700">顔を上の交点に、枠に合わせて</text>`);
+  } else {
+    // 水平線＋一点透視
+    S.push(`<line x1="0" y1="230" x2="400" y2="230" stroke="#ffb03a" stroke-width="3" stroke-dasharray="12 8"/>`);
+    S.push(`<circle cx="200" cy="230" r="8" fill="#ffb03a"/>`);
+    const vp = [200, 230];
+    [[0, 600], [400, 600], [0, 470], [400, 470], [30, 0], [370, 0]].forEach(p => {
+      S.push(`<line x1="${vp[0]}" y1="${vp[1]}" x2="${p[0]}" y2="${p[1]}" stroke="rgba(255,255,255,.7)" stroke-width="1.8"/>`);
+    });
+    S.push(`<line x1="0" y1="400" x2="400" y2="400" ${thin} stroke-dasharray="4 7"/>`);
+    S.push(`<text x="200" y="548" text-anchor="middle" font-size="17" fill="#fff" font-weight="700">水平線と消失点を意識して</text>`);
+  }
+  $("guideSvg").innerHTML = S.join("");
+}
+const MODE_NAMES = { flower: "🌸 花・植物モード", portrait: "🧑 人物ポートレートモード", landscape: "🏔 風景・建物モード" };
+document.querySelectorAll(".modeBtn").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".modeBtn").forEach(x => x.classList.toggle("on", x === b));
+  mode = b.dataset.mode;
+  $("modeTag").textContent = MODE_NAMES[mode];
+  drawGuide();
+}));
+drawGuide();
+
+/* ---------- カメラ／ダミー切り替え ---------- */
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+    $("cam").srcObject = stream;
+    $("cam").style.display = "block";
+    $("dummyWrap").style.display = "none";
+    usingDummy = false;
+    $("srcBtn").innerHTML = "🎞 ダミー風景<small>に切り替える</small>";
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+function useDummy() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $("cam").style.display = "none";
+  $("dummyWrap").style.display = "block";
+  usingDummy = true;
+  $("srcBtn").innerHTML = "📷 カメラ<small>に切り替える</small>";
+}
+$("srcBtn").addEventListener("click", async () => {
+  if (usingDummy) { if (!await startCamera()) setAdvice("カメラを開けませんでした", "権限や接続を確認してください（デモはダミーで続けられます）"); }
+  else useDummy();
+});
+(async () => { if (!await startCamera()) { useDummy(); setAdvice("ダミー風景で表示しています", "カメラが無い環境向けのテスト表示です"); } })();
+
+/* ---------- 水準器 ---------- */
+function currentTilt() { return gamma !== null ? gamma : sliderGamma; }
+function renderLevel() {
+  const g = currentTilt();
+  const ok = Math.abs(g) <= 2;
+  const bubble = $("bubble");
+  bubble.style.transform = `translate(${Math.max(-96, Math.min(96, g * 3.2))}px, 0)`;
+  $("level").classList.toggle("ok", ok);
+  $("levelText").textContent = ok ? "水平OK！" : (g > 2 ? `← 左に回して水平に（${g.toFixed(0)}°）` : `右に回して水平に →（${g.toFixed(0)}°）`);
+  if (ok && !wasLevelOK && Date.now() - lastLevelSpeakAt > 5000) {
+    lastLevelSpeakAt = Date.now();
+    speak("水平になりました");
+  }
+  wasLevelOK = ok;
+}
+$("tiltRange").addEventListener("input", e => {
+  sliderGamma = parseFloat(e.target.value);
+  $("tiltVal").textContent = sliderGamma.toFixed(0) + "°";
+  if (gamma === null) renderLevel();
+});
+function onOrient(e) {
+  if (e.gamma === null || e.gamma === undefined) return;
+  gamma = e.gamma;
+  renderLevel();
+}
+async function enableSensor() {
+  try {
+    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res !== "granted") { setAdvice("センサーが許可されませんでした", "傾きスライダーで代用できます（設定から表示）"); showTilt(true); return; }
+    }
+    window.addEventListener("deviceorientation", onOrient);
+    $("sensorBtn").style.display = "none";
+    setTimeout(() => { if (gamma === null) { showTilt(true); setAdvice("センサー値が取れませんでした", "傾きスライダーでテストできます"); } }, 1200);
+  } catch (e) {
+    showTilt(true);
+  }
+}
+function showTilt(v) { $("tiltCtl").style.display = v ? "flex" : "none"; $("showTilt").checked = v; }
+if (typeof DeviceOrientationEvent !== "undefined") {
+  if (typeof DeviceOrientationEvent.requestPermission === "function") $("sensorBtn").style.display = "block";
+  else { window.addEventListener("deviceorientation", onOrient); setTimeout(() => { if (gamma === null) showTilt(true); }, 1500); }
+} else showTilt(true);
+$("sensorBtn").addEventListener("click", enableSensor);
+renderLevel();
+
+/* ---------- 音声読み上げ ---------- */
+function speak(text) {
+  if (!store.voice || !("speechSynthesis" in window)) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ja-JP"; u.rate = 1.05;
+    speechSynthesis.speak(u);
+  } catch (e) { /* 音声が使えない環境では黙って続行 */ }
+}
+function stopSpeak() { if ("speechSynthesis" in window) speechSynthesis.cancel(); }
+$("stopSpeak").addEventListener("click", stopSpeak);
+function syncVoiceBtn() { $("voiceBtn").textContent = store.voice ? "🔊 音声 ON" : "🔇 音声 OFF"; $("voiceBtn").classList.toggle("on", store.voice); }
+$("voiceBtn").addEventListener("click", () => { store.voice = !store.voice; if (!store.voice) stopSpeak(); syncVoiceBtn(); });
+syncVoiceBtn();
+
+/* ---------- コーチング ---------- */
+function setAdvice(text, sub, score) {
+  $("adviceText").textContent = text;
+  if (sub !== undefined) $("adviceSub").textContent = sub;
+  if (score !== undefined && score !== null) { $("scoreNum").textContent = score; lastScore = score; }
+  lastAdvice = text;
+}
+const DEMO_ADVICE = {
+  flower: ["花を右下の交点に少し寄せて", "もう一歩、花に近づいてみて", "らせんの中心に花を合わせて", "背景の明るい部分を避けてみて", "花を的の中心にそっと置いて"],
+  portrait: ["顔を上の交点に合わせて", "頭の上に少し余白を残して", "目線の高さまでスマホを上げて", "シルエット枠に肩を合わせて", "背景がすっきりする位置へ半歩横に"],
+  landscape: ["水平線を下の三分の一に置いて", "消失点に道や川を合わせて", "手前に目立つ物を入れると奥行きが出ます", "空を広く取ると開放感が出ます", "建物の縦をまっすぐに立てて"]
+};
+let demoIdx = 0;
+function demoCoach() {
+  const g = Math.abs(currentTilt());
+  let score;
+  if (g <= 2) score = 80 + Math.floor(Math.random() * 16);
+  else if (g <= 6) score = 66 + Math.floor(Math.random() * 13);
+  else score = 48 + Math.floor(Math.random() * 17);
+  let advice;
+  if (g > 6) advice = "まず水平を合わせてから撮りましょう";
+  else if (g > 2) advice = "あと少し、水平に近づけて";
+  else { advice = DEMO_ADVICE[mode][demoIdx++ % DEMO_ADVICE[mode].length]; }
+  return { score, advice };
+}
+async function captureCanvas(maxW) {
+  const c = document.createElement("canvas");
+  const ctx = c.getContext("2d");
+  if (!usingDummy && $("cam").videoWidth) {
+    const v = $("cam");
+    const scale = Math.min(1, maxW / v.videoWidth);
+    c.width = Math.round(v.videoWidth * scale); c.height = Math.round(v.videoHeight * scale);
+    ctx.drawImage(v, 0, 0, c.width, c.height);
+  } else {
+    // ダミー風景（SVG）を画像化する
+    const svg = $("dummyWrap").querySelector("svg");
+    const xml = new XMLSerializer().serializeToString(svg);
+    const url = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+    c.width = 400; c.height = 600;
+    ctx.drawImage(img, 0, 0, 400, 600);
+    URL.revokeObjectURL(url);
+  }
+  return c;
+}
+async function geminiCoach(canvas) {
+  const key = store.key;
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+  const b64 = dataUrl.split(",")[1];
+  const prompt = "あなたは写真の構図コーチです。この写真の構図を100点満点で採点し、撮影者が次にどう動けば良くなるか、30文字以内の具体的な移動指示を1つだけください。出力はJSONのみ：{\"score\": 数値, \"advice\": \"指示文\"}";
+  const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + encodeURIComponent(key), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: "image/jpeg", data: b64 } }] }],
+      generationConfig: { response_mime_type: "application/json", temperature: 0.4 }
+    })
+  });
+  if (!res.ok) throw new Error("API " + res.status);
+  const j = await res.json();
+  const text = j.candidates[0].content.parts.map(p => p.text || "").join("");
+  const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+  return { score: Math.max(0, Math.min(100, Math.round(parsed.score))), advice: String(parsed.advice).slice(0, 40) };
+}
+$("coachBtn").addEventListener("click", async () => {
+  if (analyzing) return;
+  analyzing = true;
+  setAdvice("判定中…", store.key ? "AIが写真を見ています" : "デモモードで判定しています");
+  try {
+    let result, source;
+    if (store.key) {
+      try { result = await geminiCoach(await captureCanvas(768)); source = "AIコーチ（Gemini）の判定"; }
+      catch (e) { result = demoCoach(); source = "AIに接続できず、デモ判定に切り替えました"; }
+    } else { result = demoCoach(); source = "デモモードの判定（設定でAPIキーを入れるとAI判定）"; }
+    setAdvice(result.advice, source, result.score);
+    speak("スコア" + result.score + "点。" + result.advice);
+  } finally { analyzing = false; }
+});
+
+/* ---------- 撮影 ---------- */
+let lastDataUrl = "";
+$("shutter").addEventListener("click", async () => {
+  try {
+    const canvas = await captureCanvas(1280);
+    lastDataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    $("previewImg").src = lastDataUrl;
+    $("downloadBtn").href = lastDataUrl;
+    $("previewMeta").textContent = lastScore !== null
+      ? `スコア ${lastScore}点 ― ${lastAdvice}`
+      : "まだコーチ判定をしていません。「コーチに聞く」で採点できます。";
+    $("previewModal").classList.add("open");
+    speak("撮影しました");
+  } catch (e) {
+    setAdvice("撮影に失敗しました", "もう一度お試しください");
+  }
+});
+$("closePreview").addEventListener("click", () => $("previewModal").classList.remove("open"));
+$("shareBtn").addEventListener("click", async () => {
+  try {
+    const blob = await (await fetch(lastDataUrl)).blob();
+    const file = new File([blob], "best-angle.jpg", { type: "image/jpeg" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file] });
+    else if (navigator.share) await navigator.share({ title: "今のベストアングル", text: "撮影した写真" });
+  } catch (e) { /* 共有がキャンセルされた場合は何もしない */ }
+});
+
+/* ---------- 設定 ---------- */
+$("settingsBtn").addEventListener("click", () => { $("apiKey").value = store.key; $("settingsModal").classList.add("open"); });
+$("closeSettings").addEventListener("click", () => $("settingsModal").classList.remove("open"));
+$("saveKey").addEventListener("click", () => {
+  store.key = $("apiKey").value.trim();
+  $("adviceSub").textContent = store.key ? "AIコーチ（Gemini）が有効です" : "デモモード（APIキー未設定）";
+  $("settingsModal").classList.remove("open");
+});
+$("clearKey").addEventListener("click", () => { store.key = ""; $("apiKey").value = ""; $("adviceSub").textContent = "デモモード（APIキー未設定）"; });
+$("showTilt").addEventListener("change", e => showTilt(e.target.checked));
+if (store.key) $("adviceSub").textContent = "AIコーチ（Gemini）が有効です";
+</script>
+</body>
+</html>
