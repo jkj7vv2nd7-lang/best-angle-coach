@@ -11,6 +11,7 @@
 | 水準器（gamma、±2°で緑＋音声） | `sensors_plus` の加速度センサーから傾き角を算出 |
 | 音声ガイド（読み上げ＋停止） | `flutter_tts`（ja-JP）、停止は `stop()` |
 | 構図ガイド3モード（SVG） | `CustomPainter` で再描画（後述） |
+| 巨匠の「型」オーバーレイ5種（フェルメール型／北斎・富士型／映画・シンメトリー型／映画・額縁型／逆光シルエット型、一言ガイドの表示と読み上げ付き） | `guide/painters/kata_painters.dart` に型ごとの Painter を追加し、モードガイドの上に重ねる |
 | AIコーチ（Gemini、キー未設定時はデモ） | `google_generative_ai`、キーは `flutter_secure_storage` |
 | 撮影→プレビュー→保存/共有 | `camera` の `takePicture`、`gal`（保存）、`share_plus`（共有） |
 

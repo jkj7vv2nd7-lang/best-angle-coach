@@ -56,6 +56,8 @@
     box-shadow:0 4px 14px rgba(0,0,0,.5); display:none; white-space:nowrap;}
   #modeTag{position:absolute; left:10px; top:10px; background:rgba(10,12,16,.55); color:#ffd9a0;
     font-size:13px; font-weight:700; padding:6px 10px; border-radius:8px;}
+  #kataTag{position:absolute; left:10px; top:48px; max-width:82%; background:rgba(10,20,28,.62); color:#aee3ff;
+    font-size:13px; font-weight:700; padding:6px 10px; border-radius:8px; display:none; line-height:1.5;}
   #tiltCtl{position:absolute; left:10px; right:10px; bottom:12px; white-space:nowrap; background:rgba(10,12,16,.62);
     border-radius:12px; padding:8px 12px; display:none; align-items:center; gap:10px; font-size:13px;}
   #tiltCtl input{flex:1; accent-color:#ffb03a; height:28px;}
@@ -69,13 +71,20 @@
   #adviceSub{font-size:12px; color:#9aa1ad; margin-top:2px;}
   #stopSpeak{flex:none; border:1.5px solid #3a3f4a; border-radius:10px; padding:9px 10px; font-size:12px; font-weight:700; color:#e8eaee; background:#22262f;}
   /* 操作部 */
-  #controls{background:#171a20; padding:8px 10px 12px; border-top:1px solid #262a33;}
+  #controls{background:#171a20; padding:8px 10px 12px; border-top:1px solid #262a33; min-width:0;}
   #modeRow{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:10px;}
   .modeBtn{border:2px solid #3a3f4a; background:#22262f; color:#cfd4dc; border-radius:12px; padding:10px 4px;
     font-size:14px; font-weight:800; line-height:1.3;}
   .modeBtn small{display:block; font-size:11px; font-weight:600; color:#9aa1ad;}
   .modeBtn.on{border-color:#ffb03a; color:#ffb03a; background:#2a2118;}
   .modeBtn.on small{color:#d8b98a;}
+  #kataRow{display:flex; align-items:center; gap:8px; margin-bottom:10px; min-width:0;}
+  #kataRow .lab{flex:none; font-size:13px; font-weight:800; color:#aee3ff;}
+  #kataChips{display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; flex:1; min-width:0;}
+  #kataChips::-webkit-scrollbar{display:none;}
+  .kataBtn{flex:none; border:2px solid #3a3f4a; background:#22262f; color:#cfd4dc; border-radius:999px;
+    padding:8px 13px; font-size:13px; font-weight:800; white-space:nowrap;}
+  .kataBtn.on{border-color:#6fd3ff; color:#aee3ff; background:#16242e;}
   #actRow{display:flex; align-items:center; justify-content:space-between; gap:8px;}
   .sideBtn{border:1.5px solid #3a3f4a; background:#22262f; color:#e8eaee; border-radius:12px;
     padding:12px 10px; font-size:13px; font-weight:800; width:96px; line-height:1.35;}
@@ -155,6 +164,7 @@
   </div>
   <svg id="guideSvg" viewBox="0 0 400 600" preserveAspectRatio="xMidYMid slice"></svg>
   <div id="modeTag">🌸 花・植物モード</div>
+  <div id="kataTag"></div>
   <div id="level">
     <div id="levelBar"><div class="mid"></div><div id="bubble"></div></div>
     <div id="levelText">水準器</div>
@@ -177,6 +187,17 @@
     <button class="modeBtn on" data-mode="flower">🌸 花・植物<small>日の丸＋黄金比</small></button>
     <button class="modeBtn" data-mode="portrait">🧑 人物<small>三分割＋シルエット</small></button>
     <button class="modeBtn" data-mode="landscape">🏔 風景・建物<small>水平線＋一点透視</small></button>
+  </div>
+  <div id="kataRow">
+    <div class="lab">🖼 型</div>
+    <div id="kataChips">
+      <button class="kataBtn on" data-kata="">型なし</button>
+      <button class="kataBtn" data-kata="vermeer">フェルメール型</button>
+      <button class="kataBtn" data-kata="hokusai">北斎・富士型</button>
+      <button class="kataBtn" data-kata="symmetry">映画・シンメトリー型</button>
+      <button class="kataBtn" data-kata="frame">映画・額縁型</button>
+      <button class="kataBtn" data-kata="backlight">逆光シルエット型</button>
+    </div>
   </div>
   <div id="actRow">
     <button class="sideBtn" id="srcBtn">🎞 ダミー風景<small>カメラに切替</small></button>
@@ -298,6 +319,7 @@ function drawGuide() {
     S.push(`<line x1="0" y1="400" x2="400" y2="400" ${thin} stroke-dasharray="4 7"/>`);
     S.push(`<text x="200" y="548" text-anchor="middle" font-size="17" fill="#fff" font-weight="700">水平線と消失点を意識して</text>`);
   }
+  if (kata && KATA[kata]) S.push(KATA[kata].draw());
   $("guideSvg").innerHTML = S.join("");
 }
 const MODE_NAMES = { flower: "🌸 花・植物モード", portrait: "🧑 人物ポートレートモード", landscape: "🏔 風景・建物モード" };
@@ -305,6 +327,107 @@ document.querySelectorAll(".modeBtn").forEach(b => b.addEventListener("click", (
   document.querySelectorAll(".modeBtn").forEach(x => x.classList.toggle("on", x === b));
   mode = b.dataset.mode;
   $("modeTag").textContent = MODE_NAMES[mode];
+  drawGuide();
+}));
+
+/* ---------- 巨匠の「型」オーバーレイ ---------- */
+let kata = "";
+const KATA_STROKE = 'stroke="#6fd3ff" stroke-width="3" fill="none" stroke-linecap="round"';
+const KATA_THIN = 'stroke="rgba(174,227,255,.65)" stroke-width="1.8" fill="none"';
+const KATA = {
+  vermeer: {
+    name: "フェルメール型",
+    line: "窓の光を左から。人物は右の三分の一に置いて",
+    draw() { return `<g>
+      <defs><linearGradient id="kataLight" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#aee3ff" stop-opacity=".32"/><stop offset="1" stop-color="#aee3ff" stop-opacity="0"/>
+      </linearGradient></defs>
+      <polygon points="112,104 112,296 376,398 376,192" fill="url(#kataLight)"/>
+      <rect x="20" y="100" width="92" height="200" ${KATA_STROKE} stroke-dasharray="9 7"/>
+      <line x1="66" y1="100" x2="66" y2="300" ${KATA_THIN}/><line x1="20" y1="200" x2="112" y2="200" ${KATA_THIN}/>
+      <g stroke="#aee3ff" stroke-width="3.4" fill="none" stroke-linecap="round">
+        <line x1="126" y1="158" x2="212" y2="184"/><polyline points="196,172 214,185 194,196"/>
+        <line x1="126" y1="248" x2="212" y2="298"/><polyline points="192,288 214,300 206,278"/>
+      </g>
+      <line x1="267" y1="0" x2="267" y2="600" ${KATA_THIN} stroke-dasharray="5 8"/>
+      <ellipse cx="267" cy="318" rx="34" ry="44" ${KATA_STROKE} stroke-dasharray="8 7"/>
+      <path d="M223,456 C223,394 311,394 311,456" ${KATA_STROKE} stroke-dasharray="8 7"/>
+      <line x1="248" y1="300" x2="122" y2="192" stroke="rgba(255,255,255,.85)" stroke-width="2.2" stroke-dasharray="3 7"/>
+    </g>`; }
+  },
+  hokusai: {
+    name: "北斎・富士型",
+    line: "手前に大きな弧、主題は黄金比の点に小さく",
+    draw() { return `<g>
+      <path d="M-10,432 C90,300 150,240 235,205 C300,178 372,206 415,302" stroke="#6fd3ff" stroke-width="5.5" fill="none" stroke-linecap="round"/>
+      <path d="M-10,466 C100,346 176,286 252,252 C316,224 378,250 415,332" stroke="rgba(174,227,255,.6)" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+      <rect x="0" y="398" width="400" height="26" fill="#6fd3ff" opacity=".13"/>
+      <line x1="0" y1="398" x2="400" y2="398" ${KATA_THIN}/><line x1="0" y1="424" x2="400" y2="424" ${KATA_THIN}/>
+      <polygon points="202,398 247,352 292,398" ${KATA_STROKE}/>
+      <polygon points="235,368 247,352 259,368 250,374 244,368" fill="#aee3ff"/>
+      <circle cx="247" cy="352" r="6" fill="#6fd3ff"/>
+      <circle cx="247" cy="352" r="14" ${KATA_THIN} stroke-dasharray="4 5"/>
+    </g>`; }
+  },
+  symmetry: {
+    name: "映画・シンメトリー型",
+    line: "消失点を真ん中に、左右対称に構えて",
+    draw() { const vp = [200, 300]; let lines = "";
+      [[0,0],[400,0],[0,600],[400,600],[200,0],[200,600],[0,300],[400,300]].forEach(p => {
+        lines += `<line x1="${vp[0]}" y1="${vp[1]}" x2="${p[0]}" y2="${p[1]}" ${KATA_THIN}/>`; });
+      return `<g>${lines}
+      <line x1="200" y1="0" x2="200" y2="600" stroke="#6fd3ff" stroke-width="3"/>
+      <line x1="0" y1="300" x2="400" y2="300" ${KATA_THIN} stroke-dasharray="6 7"/>
+      <circle cx="200" cy="300" r="10" fill="#6fd3ff"/>
+      <circle cx="200" cy="300" r="24" ${KATA_STROKE} stroke-dasharray="6 6"/>
+      <path d="M72,180 L42,180 L42,420 L72,420" ${KATA_STROKE}/>
+      <path d="M328,180 L358,180 L358,420 L328,420" ${KATA_STROKE}/>
+    </g>`; }
+  },
+  frame: {
+    name: "映画・額縁型",
+    line: "ドアや窓の枠の中に、主題を入れて",
+    draw() { return `<g>
+      <rect x="64" y="104" width="272" height="392" stroke="#6fd3ff" stroke-width="4.5" fill="none"/>
+      <rect x="84" y="124" width="232" height="352" ${KATA_THIN} stroke-dasharray="8 7"/>
+      <line x1="200" y1="124" x2="200" y2="476" ${KATA_THIN} stroke-dasharray="3 8"/>
+      <line x1="84" y1="300" x2="316" y2="300" ${KATA_THIN} stroke-dasharray="3 8"/>
+      <circle cx="200" cy="300" r="17" ${KATA_STROKE}/>
+      <circle cx="200" cy="300" r="5" fill="#6fd3ff"/>
+    </g>`; }
+  },
+  backlight: {
+    name: "逆光シルエット型",
+    line: "光源を画面に、主題は影になる場所へ",
+    draw() { let rays = "";
+      for (let i = 0; i < 8; i++) {
+        const a = i * Math.PI / 4, x1 = 318 + 36 * Math.cos(a), y1 = 118 + 36 * Math.sin(a);
+        const x2 = 318 + 50 * Math.cos(a), y2 = 118 + 50 * Math.sin(a);
+        rays += `<line x1="${x1.toFixed(0)}" y1="${y1.toFixed(0)}" x2="${x2.toFixed(0)}" y2="${y2.toFixed(0)}" stroke="#aee3ff" stroke-width="3" stroke-linecap="round"/>`;
+      }
+      return `<g>
+      <circle cx="318" cy="118" r="46" fill="#aee3ff" opacity=".22"/>
+      <circle cx="318" cy="118" r="25" fill="#aee3ff"/>${rays}
+      <line x1="272" y1="168" x2="192" y2="322" stroke="rgba(174,227,255,.8)" stroke-width="2.4" stroke-dasharray="4 7"/>
+      <polyline points="206,306 190,324 210,328" stroke="rgba(174,227,255,.8)" stroke-width="2.4" fill="none"/>
+      <line x1="0" y1="472" x2="400" y2="472" ${KATA_THIN} stroke-dasharray="6 7"/>
+      <ellipse cx="150" cy="524" rx="88" ry="13" fill="rgba(8,12,18,.4)"/>
+      <circle cx="150" cy="398" r="24" fill="rgba(8,12,18,.55)" stroke="#6fd3ff" stroke-width="2.6" stroke-dasharray="7 6"/>
+      <path d="M92,512 C92,446 118,428 150,428 C182,428 208,446 208,512 Z" fill="rgba(8,12,18,.55)" stroke="#6fd3ff" stroke-width="2.6" stroke-dasharray="7 6"/>
+    </g>`; }
+  }
+};
+document.querySelectorAll(".kataBtn").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".kataBtn").forEach(x => x.classList.toggle("on", x === b));
+  kata = b.dataset.kata;
+  const tag = $("kataTag");
+  if (kata && KATA[kata]) {
+    tag.style.display = "block";
+    tag.textContent = "🖼 " + KATA[kata].name + " ― " + KATA[kata].line;
+    speak(KATA[kata].name + "。" + KATA[kata].line);
+  } else {
+    tag.style.display = "none";
+  }
   drawGuide();
 }));
 drawGuide();
